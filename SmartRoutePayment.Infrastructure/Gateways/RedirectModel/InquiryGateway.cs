@@ -87,6 +87,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways.RedirectModel
 
         /// <summary>
         /// Builds request parameters for inquiry
+        /// Fills in configuration values from settings
         /// </summary>
         private Dictionary<string, string> BuildRequestParameters(InquiryRequest request)
         {
@@ -95,7 +96,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways.RedirectModel
                 { "MessageID", request.MessageId },
                 { "MerchantID", _settings.MerchantId },
                 { "OriginalTransactionID", request.OriginalTransactionId },
-                { "Version", request.Version }
+                { "Version", _settings.Version }
             };
 
             // Add optional parameters if provided

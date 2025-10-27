@@ -90,6 +90,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways.RedirectModel
 
         /// <summary>
         /// Builds request parameters for refund
+        /// Fills in configuration values from settings
         /// </summary>
         private Dictionary<string, string> BuildRequestParameters(RefundRequest request)
         {
@@ -98,9 +99,9 @@ namespace SmartRoutePayment.Infrastructure.Gateways.RedirectModel
                 { "MessageID", request.MessageId },
                 { "TransactionID", request.TransactionId },
                 { "MerchantID", _settings.MerchantId },
-                { "CurrencyISOCode", request.CurrencyIsoCode },
+                { "CurrencyISOCode", _settings.CurrencyIsoCode },
                 { "Amount", request.Amount },
-                { "Version", request.Version },
+                { "Version", _settings.Version },
                 { "OriginalTransactionID", request.OriginalTransactionId }
             };
 

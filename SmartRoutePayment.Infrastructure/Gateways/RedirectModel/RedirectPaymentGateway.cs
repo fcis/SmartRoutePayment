@@ -105,6 +105,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways.RedirectModel
 
         /// <summary>
         /// Builds request parameters dictionary for redirect payment
+        /// Fills in configuration values from settings
         /// </summary>
         private Dictionary<string, string> BuildRequestParameters(RedirectPaymentRequest request)
         {
@@ -114,25 +115,29 @@ namespace SmartRoutePayment.Infrastructure.Gateways.RedirectModel
                 { "TransactionID", request.TransactionId },
                 { "MerchantID", _settings.MerchantId },
                 { "Amount", request.Amount },
-                { "CurrencyISOCode", request.CurrencyIsoCode },
+                { "CurrencyISOCode", _settings.CurrencyIsoCode },
                 { "Language", request.Language },
-                { "Version", request.Version },
-                { "Channel", request.Channel.ToString() },
-                { "Quantity", request.Quantity.ToString() }
+                { "Version", _settings.Version },
+                { "Channel", _settings.Channel.ToString() },
+                { "Quantity", _settings.Quantity.ToString() }
             };
 
-            // Add optional parameters if provided
-            if (!string.IsNullOrWhiteSpace(request.ThemeId))
-                parameters.Add("ThemeID", request.ThemeId);
+            // Add ThemeID from settings
+            if (!string.IsNullOrWhiteSpace(_settings.ThemeId))
+                parameters.Add("ThemeID", _settings.ThemeId);
 
+            // Add optional parameters if provided
             if (!string.IsNullOrWhiteSpace(request.PaymentDescription))
                 parameters.Add("PaymentDescription", request.PaymentDescription);
 
             if (!string.IsNullOrWhiteSpace(request.ItemId))
                 parameters.Add("ItemID", request.ItemId);
 
+            // Use custom ResponseBackURL if provided, otherwise use settings
             if (!string.IsNullOrWhiteSpace(request.ResponseBackUrl))
                 parameters.Add("ResponseBackURL", request.ResponseBackUrl);
+            else if (!string.IsNullOrWhiteSpace(_settings.ResponseBackUrl))
+                parameters.Add("ResponseBackURL", _settings.ResponseBackUrl);
 
             if (!string.IsNullOrWhiteSpace(request.GenerateToken))
                 parameters.Add("GenerateToken", request.GenerateToken);
@@ -149,8 +154,9 @@ namespace SmartRoutePayment.Infrastructure.Gateways.RedirectModel
             if (!string.IsNullOrWhiteSpace(request.PreferredPaymentMethod))
                 parameters.Add("PreferredPaymentMethod", request.PreferredPaymentMethod);
 
-            if (!string.IsNullOrWhiteSpace(request.FailedPaymentReplyUrl))
-                parameters.Add("FailedPaymentReplyURL", request.FailedPaymentReplyUrl);
+            // Add FailedPaymentReplyURL from settings
+            if (!string.IsNullOrWhiteSpace(_settings.FailedPaymentReplyUrl))
+                parameters.Add("FailedPaymentReplyURL", _settings.FailedPaymentReplyUrl);
 
             return parameters;
         }
