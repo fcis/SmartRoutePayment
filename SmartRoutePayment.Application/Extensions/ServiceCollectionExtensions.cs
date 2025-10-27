@@ -1,5 +1,4 @@
-﻿// Add this using if you are using FluentValidation
-using FluentValidation;
+﻿using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.Extensions.DependencyInjection;
 using SmartRoutePayment.Application.Interfaces;
@@ -49,4 +48,4 @@ namespace SmartRoutePayment.Application.Extensions
         }
     }
 }
-}
+
