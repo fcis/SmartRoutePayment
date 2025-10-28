@@ -1,4 +1,5 @@
-﻿using SmartRoutePayment.Domain.Interfaces;
+﻿using Microsoft.Extensions.Logging;
+using SmartRoutePayment.Domain.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,18 +12,24 @@ namespace SmartRoutePayment.Infrastructure.Security
 {
     /// <summary>
     /// Secure hash generator for Redirectional Model
-    /// Handles hash generation and validation for Redirect Payment, Inquiry, and Refund operations
+    /// CORRECTED: No exclusions - SecureHash simply isn't in the dictionary yet
     /// </summary>
     public class RedirectSecureHashGenerator : ISecureHashGenerator
     {
+        private readonly ILogger<RedirectSecureHashGenerator>? _logger;
+
+        public RedirectSecureHashGenerator(ILogger<RedirectSecureHashGenerator>? logger = null)
+        {
+            _logger = logger;
+        }
+
         /// <summary>
-        /// Generates secure hash for Redirectional Model requests
-        /// For Redirect Payment: Excludes SecureHash field only
-        /// For Inquiry/Refund: Includes all parameters
+        /// Generates secure hash for REQUEST
+        /// Based on SmartRoute documentation:
+        /// 1. Sort ALL parameters alphabetically by KEY (using Ordinal comparison)
+        /// 2. Concatenate: AuthToken + Value1 + Value2 + ... (in alphabetical order)
+        /// 3. No exclusions - SecureHash field simply doesn't exist yet
         /// </summary>
-        /// <param name="parameters">Request parameters</param>
-        /// <param name="authenticationToken">Merchant authentication token</param>
-        /// <returns>SHA-256 hex-encoded hash</returns>
         public string Generate(Dictionary<string, string> parameters, string authenticationToken)
         {
             if (parameters == null || parameters.Count == 0)
@@ -31,56 +38,86 @@ namespace SmartRoutePayment.Infrastructure.Security
             if (string.IsNullOrWhiteSpace(authenticationToken))
                 throw new ArgumentException("Authentication token cannot be null or empty", nameof(authenticationToken));
 
-            // For Redirectional Model: Only exclude SecureHash itself
-            // All other parameters (including optional ones) are included if present
-            var excludedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "SecureHash"
-            };
-
-            // Filter and sort parameters alphabetically by key
+            // NO EXCLUSIONS!
+            // Sort ALL parameters alphabetically by KEY using Ordinal comparison
+            // SecureHash won't be in the dictionary because it hasn't been generated yet
             var sortedParams = parameters
-                .Where(p => !excludedKeys.Contains(p.Key))
                 .OrderBy(x => x.Key, StringComparer.Ordinal)
                 .ToList();
 
-            // Create ordered string: AuthToken + Value1 + Value2 + ... (sorted alphabetically)
+            // Build ordered string: AuthToken + Value1 + Value2 + ...
             var orderedString = new StringBuilder();
             orderedString.Append(authenticationToken);
 
+            // Debug logging
+            _logger?.LogInformation("========== SECURE HASH GENERATION ==========");
+            _logger?.LogInformation("Auth Token (masked): {Token}***",
+                authenticationToken.Substring(0, Math.Min(8, authenticationToken.Length)));
+            _logger?.LogInformation("Total Parameters: {Count}", sortedParams.Count);
+
+            Console.WriteLine("\n========== SECURE HASH GENERATION ==========");
+            Console.WriteLine($"Auth Token (masked): {authenticationToken.Substring(0, Math.Min(8, authenticationToken.Length))}***");
+            Console.WriteLine($"Total Parameters: {sortedParams.Count}");
+            Console.WriteLine("\nParameters in ALPHABETICAL order by KEY:");
+
+            int index = 1;
             foreach (var param in sortedParams)
             {
-                // Add parameter value (empty string if null)
-                orderedString.Append(param.Value ?? string.Empty);
+                // Append value (empty string if null)
+                var value = param.Value ?? string.Empty;
+                orderedString.Append(value);
+
+                _logger?.LogInformation("  [{Index}] Key='{Key}' Value='{Value}'", index, param.Key, value);
+                Console.WriteLine($"  [{index,2}] {param.Key,-25} = '{value}'");
+                index++;
             }
 
-            // Generate SHA256 hash
-            return ComputeSha256Hash(orderedString.ToString());
+            var concatenatedString = orderedString.ToString();
+
+            _logger?.LogInformation("Concatenated String Length: {Length}", concatenatedString.Length);
+            _logger?.LogInformation("String Preview (first 150 chars): {Preview}...",
+                concatenatedString.Substring(0, Math.Min(150, concatenatedString.Length)));
+
+            Console.WriteLine($"\nConcatenated String Length: {concatenatedString.Length}");
+            Console.WriteLine($"String Preview: {concatenatedString.Substring(0, Math.Min(150, concatenatedString.Length))}...");
+
+            // Generate SHA-256 hash (lowercase hex)
+            var hash = ComputeSha256Hash(concatenatedString);
+
+            _logger?.LogInformation("Generated Hash: {Hash}", hash);
+            _logger?.LogInformation("===========================================\n");
+
+            Console.WriteLine($"\nGenerated SHA-256 Hash: {hash}");
+            Console.WriteLine("===========================================\n");
+
+            return hash;
         }
 
         /// <summary>
-        /// Validates secure hash for Redirectional Model responses
-        /// Handles URL-encoded parameters for StatusDescription and GatewayStatusDescription
+        /// Validates secure hash for RESPONSE
+        /// IMPORTANT: For response validation, we need to exclude Response.SecureHash
+        /// because it's comparing the received hash
+        /// 
+        /// Also: Response.StatusDescription and Response.GatewayStatusDescription 
+        /// must be URL-encoded before hash validation
         /// </summary>
-        /// <param name="parameters">Response parameters</param>
-        /// <param name="receivedHash">Secure hash received from SmartRoute</param>
-        /// <param name="authenticationToken">Merchant authentication token</param>
-        /// <returns>True if hash is valid, false otherwise</returns>
         public bool Validate(Dictionary<string, string> parameters, string receivedHash, string authenticationToken)
         {
             if (string.IsNullOrWhiteSpace(receivedHash))
                 return false;
 
-            // For response validation, we need to handle URL-encoded parameters
+            // Prepare parameters for validation
+            // NOW we exclude Response.SecureHash because we're comparing it
             var parametersForValidation = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var param in parameters)
             {
-                // Skip the SecureHash field itself
+                // Skip the SecureHash field itself (we're validating against it)
                 if (param.Key.Equals("Response.SecureHash", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                // URL-encode StatusDescription and GatewayStatusDescription for validation
+                // URL-encode StatusDescription and GatewayStatusDescription
+                // This is documented in SmartRoute examples (.NET code)
                 if (param.Key.Equals("Response.StatusDescription", StringComparison.OrdinalIgnoreCase) ||
                     param.Key.Equals("Response.GatewayStatusDescription", StringComparison.OrdinalIgnoreCase))
                 {
@@ -92,26 +129,40 @@ namespace SmartRoutePayment.Infrastructure.Security
                 }
             }
 
+            // Generate hash from response parameters
             var computedHash = Generate(parametersForValidation, authenticationToken);
-            return string.Equals(computedHash, receivedHash, StringComparison.OrdinalIgnoreCase);
+            var isValid = string.Equals(computedHash, receivedHash, StringComparison.OrdinalIgnoreCase);
+
+            // Debug logging
+            _logger?.LogInformation("========== HASH VALIDATION ==========");
+            _logger?.LogInformation("Received Hash: {ReceivedHash}", receivedHash);
+            _logger?.LogInformation("Computed Hash: {ComputedHash}", computedHash);
+            _logger?.LogInformation("Match: {IsValid}", isValid ? "YES ✓" : "NO ✗");
+            _logger?.LogInformation("====================================\n");
+
+            Console.WriteLine("\n========== HASH VALIDATION ==========");
+            Console.WriteLine($"Received Hash: {receivedHash}");
+            Console.WriteLine($"Computed Hash: {computedHash}");
+            Console.WriteLine($"Match: {(isValid ? "YES ✓" : "NO ✗")}");
+            Console.WriteLine("====================================\n");
+
+            return isValid;
         }
 
         /// <summary>
         /// Computes SHA-256 hash and returns lowercase hexadecimal string
         /// </summary>
-        /// <param name="input">Input string to hash</param>
-        /// <returns>Lowercase hex-encoded SHA-256 hash</returns>
         private static string ComputeSha256Hash(string input)
         {
             using var sha256 = SHA256.Create();
             var bytes = Encoding.UTF8.GetBytes(input);
             var hashBytes = sha256.ComputeHash(bytes);
 
-            // Convert byte array to lowercase hexadecimal string
-            var builder = new StringBuilder();
+            // Convert to lowercase hexadecimal (required by SmartRoute)
+            var builder = new StringBuilder(hashBytes.Length * 2);
             foreach (var b in hashBytes)
             {
-                builder.Append(b.ToString("x2"));
+                builder.Append(b.ToString("x2")); // lowercase hex
             }
 
             return builder.ToString();

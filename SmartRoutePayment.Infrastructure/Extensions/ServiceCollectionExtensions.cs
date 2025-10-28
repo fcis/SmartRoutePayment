@@ -65,7 +65,7 @@ namespace SmartRoutePayment.Infrastructure.Extensions
 
                 client.Timeout = TimeSpan.FromSeconds(settings?.TimeoutSeconds ?? 30);
                 client.DefaultRequestHeaders.Add("Accept", "application/x-www-form-urlencoded");
-                client.DefaultRequestHeaders.Add("Content-Type", "application/x-www-form-urlencoded");
+                //client.DefaultRequestHeaders.Add("Content-Type", "application/x-www-form-urlencoded");
             });
 
             // Register HTTP client for Refund Gateway (B2B API)
@@ -77,7 +77,7 @@ namespace SmartRoutePayment.Infrastructure.Extensions
 
                 client.Timeout = TimeSpan.FromSeconds(settings?.TimeoutSeconds ?? 30);
                 client.DefaultRequestHeaders.Add("Accept", "application/x-www-form-urlencoded");
-                client.DefaultRequestHeaders.Add("Content-Type", "application/x-www-form-urlencoded");
+                //client.DefaultRequestHeaders.Add("Content-Type", "application/x-www-form-urlencoded");
             });
 
             return services;
