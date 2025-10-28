@@ -11,6 +11,9 @@ using System.Threading.Tasks;
 
 namespace SmartRoutePayment.Application.Services
 {
+    /// <summary>
+    /// Payment service for processing Direct Post Payment through SmartRoute
+    /// </summary>
     public class PaymentService : IPaymentService
     {
         private readonly ISmartRouteGateway _smartRouteGateway;
@@ -20,6 +23,9 @@ namespace SmartRoutePayment.Application.Services
             _smartRouteGateway = smartRouteGateway ?? throw new ArgumentNullException(nameof(smartRouteGateway));
         }
 
+        /// <summary>
+        /// Process payment request through SmartRoute Direct Post Payment
+        /// </summary>
         public async Task<PaymentResponseDto> ProcessPaymentAsync(
             PaymentRequestDto request,
             CancellationToken cancellationToken = default)
@@ -39,23 +45,30 @@ namespace SmartRoutePayment.Application.Services
             return MapToPaymentResponseDto(paymentResponse);
         }
 
+        /// <summary>
+        /// Maps PaymentRequestDto to Domain PaymentRequest entity
+        /// </summary>
         private static PaymentRequest MapToPaymentRequest(PaymentRequestDto dto, string transactionId)
         {
             return new PaymentRequest
             {
                 TransactionId = transactionId,
                 Amount = dto.Amount,
+                MessageId = 1, // REQUIRED: 1=Payment, 2=PreAuth, 3=Verify
+                PaymentMethod = 1, // 1 = Card Payment (Mada is treated as card payment)
                 CardNumber = dto.CardNumber,
                 ExpiryDateMonth = dto.ExpiryDateMonth,
                 ExpiryDateYear = dto.ExpiryDateYear,
                 SecurityCode = dto.SecurityCode,
                 CardHolderName = dto.CardHolderName,
-                PaymentMethod = 1, // 1 = Card Payment (Mada is treated as card)
                 PaymentDescription = dto.PaymentDescription ?? string.Empty,
                 ItemId = dto.ItemId ?? string.Empty
             };
         }
 
+        /// <summary>
+        /// Maps Domain PaymentResponse entity to PaymentResponseDto
+        /// </summary>
         private static PaymentResponseDto MapToPaymentResponseDto(PaymentResponse response)
         {
             return new PaymentResponseDto
@@ -69,7 +82,7 @@ namespace SmartRoutePayment.Application.Services
                 GatewayName = response.GatewayName,
                 GatewayStatusCode = response.GatewayStatusCode,
                 GatewayStatusDescription = response.GatewayStatusDescription,
-                MaskedCardNumber = response.CardNumber,
+                MaskedCardNumber = response.CardNumber, // Already masked by SmartRoute
                 CardExpiryDate = response.CardExpiryDate,
                 CardHolderName = response.CardHolderName,
                 Amount = response.Amount,
@@ -82,10 +95,13 @@ namespace SmartRoutePayment.Application.Services
             };
         }
 
+        /// <summary>
+        /// Generates unique 20-character transaction ID
+        /// Format: Unix timestamp (13 digits) + Random (7 digits)
+        /// Example: 17298765432101234567
+        /// </summary>
         private static string GenerateTransactionId()
         {
-            // Generate unique 20-character transaction ID
-            // Format: Timestamp (13 digits) + Random (7 digits)
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
             var random = Random.Shared.Next(1000000, 9999999).ToString();
             return $"{timestamp}{random}";
