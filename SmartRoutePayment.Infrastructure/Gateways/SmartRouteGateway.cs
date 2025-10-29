@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SmartRoutePayment.Domain.Entities;
 using SmartRoutePayment.Domain.Interfaces;
 using SmartRoutePayment.Infrastructure.Configuration;
@@ -19,15 +20,18 @@ namespace SmartRoutePayment.Infrastructure.Gateways
         private readonly HttpClient _httpClient;
         private readonly SmartRouteSettings _settings;
         private readonly ISecureHashGenerator _secureHashGenerator;
+        private readonly ILogger<SmartRouteGateway> _logger;
 
         public SmartRouteGateway(
             HttpClient httpClient,
             IOptions<SmartRouteSettings> settings,
-            ISecureHashGenerator secureHashGenerator)
+            ISecureHashGenerator secureHashGenerator,
+            ILogger<SmartRouteGateway> logger)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
             _secureHashGenerator = secureHashGenerator ?? throw new ArgumentNullException(nameof(secureHashGenerator));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         /// <summary>
@@ -45,12 +49,30 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 // Build request parameters
                 var parameters = BuildRequestParameters(paymentRequest);
 
+                // === DEBUG: Log parameters BEFORE hash generation ===
+                _logger.LogDebug("=== REQUEST PARAMETERS (Before Hash) ===");
+                foreach (var param in parameters.OrderBy(p => p.Key))
+                {
+                    // Don't log sensitive card data
+                    var value = param.Key.Contains("Card") || param.Key.Contains("Security")
+                        ? "****"
+                        : param.Value;
+                    _logger.LogDebug("{Key} = {Value}", param.Key, value);
+                }
+
                 // Generate secure hash (card details are excluded automatically by SecureHashGenerator)
                 var secureHash = _secureHashGenerator.Generate(parameters, _settings.AuthenticationToken);
+
+                // === DEBUG: Log generated hash ===
+                _logger.LogDebug("Generated Request SecureHash: {Hash}", secureHash);
+
                 parameters.Add("SecureHash", secureHash);
 
                 // Convert to form data
                 var formContent = new FormUrlEncodedContent(parameters);
+
+                // === DEBUG: Log request ===
+                _logger.LogInformation("Sending request to SmartRoute: {Url}", _settings.ApiUrl);
 
                 // Send request to SmartRoute API
                 var response = await _httpClient.PostAsync(
@@ -61,11 +83,16 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 // Read response content
                 var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
+                // === DEBUG: Log raw response ===
+                _logger.LogDebug("=== RAW RESPONSE FROM SMARTROUTE ===");
+                _logger.LogDebug("{Response}", responseContent);
+
                 // Parse and validate response
                 return ParseAndValidateResponse(responseContent, paymentRequest.TransactionId);
             }
             catch (HttpRequestException ex)
             {
+                _logger.LogError(ex, "HTTP connection error");
                 return CreateErrorResponse(
                     paymentRequest.TransactionId,
                     "HTTP_ERROR",
@@ -73,6 +100,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
             }
             catch (TaskCanceledException ex)
             {
+                _logger.LogError(ex, "Request timeout");
                 return CreateErrorResponse(
                     paymentRequest.TransactionId,
                     "TIMEOUT",
@@ -80,6 +108,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
             }
             catch (ArgumentException ex)
             {
+                _logger.LogError(ex, "Validation error");
                 return CreateErrorResponse(
                     paymentRequest.TransactionId,
                     "VALIDATION_ERROR",
@@ -87,6 +116,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Unexpected error");
                 return CreateErrorResponse(
                     paymentRequest.TransactionId,
                     "SYSTEM_ERROR",
@@ -141,7 +171,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 { "ThemeID", _settings.ThemeId },
                 { "Version", _settings.Version },
 
-                // Card Details (IMPORTANT: Use correct field names with Card. prefix)
+                // Card Details (WITHOUT Card. prefix - cleaner approach)
                 { "CardNumber", request.CardNumber },
                 { "ExpiryDateYear", request.ExpiryDateYear },
                 { "ExpiryDateMonth", request.ExpiryDateMonth },
@@ -175,6 +205,13 @@ namespace SmartRoutePayment.Infrastructure.Gateways
             // Parse form-encoded response
             var responsePairs = ParseFormEncodedResponse(responseContent);
 
+            // === DEBUG: Log parsed response ===
+            _logger.LogDebug("=== PARSED RESPONSE PARAMETERS ===");
+            foreach (var param in responsePairs.OrderBy(p => p.Key))
+            {
+                _logger.LogDebug("{Key} = {Value}", param.Key, param.Value);
+            }
+
             // Extract response parameters
             var paymentResponse = new PaymentResponse
             {
@@ -200,14 +237,42 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 ProcessedAt = DateTime.UtcNow
             };
 
+            // === DEBUG: Check if StatusCode is 00018 (hash mismatch from SmartRoute) ===
+            if (paymentResponse.StatusCode == "00018")
+            {
+                _logger.LogError("SmartRoute returned 00018 - REQUEST hash was invalid!");
+                _logger.LogError("This means the hash WE SENT was wrong, not the response hash.");
+                paymentResponse.IsSuccess = false;
+                paymentResponse.ErrorMessage = "Secure hash validation failed on SmartRoute side (Error 00018)";
+                return paymentResponse;
+            }
+
             // Validate secure hash
             var receivedHash = paymentResponse.SecureHash;
+
+            // === DEBUG: Log received hash ===
+            _logger.LogDebug("Received Response SecureHash: {Hash}", receivedHash);
 
             // Build parameters for hash validation (exclude Response.SecureHash)
             var parametersForValidation = responsePairs
                 .Where(p => p.Key.StartsWith("Response.", StringComparison.OrdinalIgnoreCase)
                          && !p.Key.Equals("Response.SecureHash", StringComparison.OrdinalIgnoreCase))
                 .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+
+            // === DEBUG: Log parameters used for validation ===
+            _logger.LogDebug("=== PARAMETERS FOR HASH VALIDATION ===");
+            foreach (var param in parametersForValidation.OrderBy(p => p.Key))
+            {
+                _logger.LogDebug("{Key} = {Value}", param.Key, param.Value);
+            }
+
+            var computedHash = _secureHashGenerator.Generate(parametersForValidation, _settings.AuthenticationToken);
+
+            // === DEBUG: Compare hashes ===
+            _logger.LogDebug("Computed Hash from Response: {ComputedHash}", computedHash);
+            _logger.LogDebug("Received Hash from SmartRoute: {ReceivedHash}", receivedHash);
+            _logger.LogDebug("Hashes Match: {Match}",
+                string.Equals(computedHash, receivedHash, StringComparison.OrdinalIgnoreCase));
 
             var isHashValid = _secureHashGenerator.Validate(
                 parametersForValidation,
@@ -216,10 +281,15 @@ namespace SmartRoutePayment.Infrastructure.Gateways
 
             if (!isHashValid)
             {
+                _logger.LogError("Response hash validation FAILED!");
+                _logger.LogError("Expected: {Expected}, Received: {Received}", computedHash, receivedHash);
+
                 paymentResponse.IsSuccess = false;
                 paymentResponse.ErrorMessage = "Invalid secure hash - response may be tampered";
                 return paymentResponse;
             }
+
+            _logger.LogInformation("Response hash validation PASSED!");
 
             // Check if payment was successful (00000 = Success)
             paymentResponse.IsSuccess = paymentResponse.StatusCode == "00000";
