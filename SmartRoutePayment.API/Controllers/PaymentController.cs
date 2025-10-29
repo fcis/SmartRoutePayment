@@ -49,7 +49,7 @@ namespace SmartRoutePayment.API.Controllers
                 request.Amount / 100); // Convert fils to SAR for logging
 
             // No need for manual validation - FluentValidation handles this automatically
-            // via AddFluentValidationAutoValidation() in Program.cs
+            // via .() in Program.cs
 
             // Process payment
             var result = await _paymentService.ProcessPaymentAsync(request, cancellationToken);

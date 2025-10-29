@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace SmartRoutePayment.Infrastructure.Gateways
 {
@@ -51,7 +52,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
 
                 // === DEBUG: Log parameters BEFORE hash generation ===
                 _logger.LogDebug("=== REQUEST PARAMETERS (Before Hash) ===");
-                foreach (var param in parameters.OrderBy(p => p.Key))
+                foreach (var param in parameters.OrderBy(p => p.Key, StringComparer.Ordinal))
                 {
                     // Don't log sensitive card data
                     var value = param.Key.Contains("Card") || param.Key.Contains("Security")
@@ -85,7 +86,18 @@ namespace SmartRoutePayment.Infrastructure.Gateways
 
                 // === DEBUG: Log raw response ===
                 _logger.LogDebug("=== RAW RESPONSE FROM SMARTROUTE ===");
+                _logger.LogDebug("Status Code: {StatusCode}", response.StatusCode);
                 _logger.LogDebug("{Response}", responseContent);
+
+                // Check for HTTP errors
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("SmartRoute returned HTTP {StatusCode}", response.StatusCode);
+                    return CreateErrorResponse(
+                        paymentRequest.TransactionId,
+                        $"HTTP_{(int)response.StatusCode}",
+                        $"SmartRoute returned HTTP {response.StatusCode}: {responseContent}");
+                }
 
                 // Parse and validate response
                 return ParseAndValidateResponse(responseContent, paymentRequest.TransactionId);
@@ -154,16 +166,21 @@ namespace SmartRoutePayment.Infrastructure.Gateways
 
         private Dictionary<string, string> BuildRequestParameters(PaymentRequest request)
         {
+            // CRITICAL: Amount must be in smallest currency unit (fils/cents) without decimal point
+            // For SAR: 1.50 SAR = 150 halalas
+            // For USD: 1.50 USD = 150 cents
+            var amountInSmallestUnit = (request.Amount * 100).ToString("F0");
+
             var parameters = new Dictionary<string, string>
             {
                 // Core Transaction Parameters
                 { "TransactionID", request.TransactionId },
                 { "MerchantID", _settings.MerchantId },
-                { "Amount", ((int)request.Amount).ToString() }, // Amount in fils/cents (smallest currency unit)
+                { "Amount", amountInSmallestUnit }, // Amount in fils/cents (smallest currency unit)
                 { "CurrencyISOCode", _settings.CurrencyIsoCode },
                 { "MessageID", request.MessageId.ToString() }, // 1=Payment, 2=PreAuth, 3=Verify
-                { "Quantity", _settings.Quantity.ToString() },
-                { "Channel", _settings.Channel.ToString() }, // 0=Web, 1=Mobile, 2=CallCenter
+                { "Quantity", request.Quantity > 0 ? request.Quantity.ToString() : _settings.Quantity.ToString() },
+                { "Channel", request.Channel >= 0 ? request.Channel.ToString() : _settings.Channel.ToString() }, // 0=Web, 1=Mobile, 2=CallCenter
                 { "PaymentMethod", request.PaymentMethod.ToString() }, // 1=Card, 2=Sadad, etc.
                 
                 // UI Configuration
@@ -171,7 +188,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 { "ThemeID", _settings.ThemeId },
                 { "Version", _settings.Version },
 
-                // Card Details (WITHOUT Card. prefix - cleaner approach)
+                // Card Details (excluded from hash by SecureHashGenerator)
                 { "CardNumber", request.CardNumber },
                 { "ExpiryDateYear", request.ExpiryDateYear },
                 { "ExpiryDateMonth", request.ExpiryDateMonth },
@@ -185,7 +202,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 parameters.Add("ResponseBackURL", request.ResponseBackURL);
             }
 
-            // Add optional PaymentDescription if provided
+            // Add optional PaymentDescription if provided (MUST be UTF-8 encoded)
             if (!string.IsNullOrWhiteSpace(request.PaymentDescription))
             {
                 parameters.Add("PaymentDescription", request.PaymentDescription);
@@ -194,7 +211,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
             // Add optional ItemId if provided
             if (!string.IsNullOrWhiteSpace(request.ItemId))
             {
-                parameters.Add("ItemId", request.ItemId);
+                parameters.Add("ItemID", request.ItemId);
             }
 
             return parameters;
@@ -207,7 +224,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
 
             // === DEBUG: Log parsed response ===
             _logger.LogDebug("=== PARSED RESPONSE PARAMETERS ===");
-            foreach (var param in responsePairs.OrderBy(p => p.Key))
+            foreach (var param in responsePairs.OrderBy(p => p.Key, StringComparer.Ordinal))
             {
                 _logger.LogDebug("{Key} = {Value}", param.Key, param.Value);
             }
@@ -247,21 +264,36 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 return paymentResponse;
             }
 
-            // Validate secure hash
+            // CRITICAL: Validate secure hash
+            // According to SmartRoute .NET sample code, StatusDescription and GatewayStatusDescription
+            // MUST be URL-encoded when building the hash validation string
             var receivedHash = paymentResponse.SecureHash;
 
             // === DEBUG: Log received hash ===
             _logger.LogDebug("Received Response SecureHash: {Hash}", receivedHash);
 
             // Build parameters for hash validation (exclude Response.SecureHash)
-            var parametersForValidation = responsePairs
-                .Where(p => p.Key.StartsWith("Response.", StringComparison.OrdinalIgnoreCase)
-                         && !p.Key.Equals("Response.SecureHash", StringComparison.OrdinalIgnoreCase))
-                .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+            // CRITICAL: URL-encode StatusDescription and GatewayStatusDescription as per SmartRoute docs
+            var parametersForValidation = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var pair in responsePairs.Where(p => p.Key.StartsWith("Response.", StringComparison.OrdinalIgnoreCase)
+                                                       && !p.Key.Equals("Response.SecureHash", StringComparison.OrdinalIgnoreCase)))
+            {
+                // CRITICAL: URL-encode these specific fields for hash validation
+                if (pair.Key.Equals("Response.StatusDescription", StringComparison.OrdinalIgnoreCase) ||
+                    pair.Key.Equals("Response.GatewayStatusDescription", StringComparison.OrdinalIgnoreCase))
+                {
+                    parametersForValidation[pair.Key] = HttpUtility.UrlEncode(pair.Value, System.Text.Encoding.UTF8);
+                }
+                else
+                {
+                    parametersForValidation[pair.Key] = pair.Value;
+                }
+            }
 
             // === DEBUG: Log parameters used for validation ===
-            _logger.LogDebug("=== PARAMETERS FOR HASH VALIDATION ===");
-            foreach (var param in parametersForValidation.OrderBy(p => p.Key))
+            _logger.LogDebug("=== PARAMETERS FOR HASH VALIDATION (with URL encoding) ===");
+            foreach (var param in parametersForValidation.OrderBy(p => p.Key, StringComparer.Ordinal))
             {
                 _logger.LogDebug("{Key} = {Value}", param.Key, param.Value);
             }
