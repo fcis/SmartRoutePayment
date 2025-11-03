@@ -13,5 +13,13 @@ namespace SmartRoutePayment.Application.Interfaces
         Task<PaymentResponseDto> ProcessPaymentAsync(
             PaymentRequestDto request,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Prepares payment parameters and generates secure hash for frontend
+        /// Frontend will add card data and post directly to PayOne
+        /// </summary>
+        Task<PreparePaymentResponseDto> PreparePaymentAsync(
+            PreparePaymentRequestDto request,
+            CancellationToken cancellationToken = default);
     }
 }
