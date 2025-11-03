@@ -51,31 +51,43 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 var parameters = BuildRequestParameters(paymentRequest);
 
                 // === DEBUG: Log parameters BEFORE hash generation ===
-                _logger.LogDebug("=== REQUEST PARAMETERS (Before Hash) ===");
+                _logger.LogInformation("=== REQUEST PARAMETERS (Before Hash) ===");
                 foreach (var param in parameters.OrderBy(p => p.Key, StringComparer.Ordinal))
                 {
-                    // Don't log sensitive card data
+                    // Mask sensitive card data in logs
                     var value = param.Key.Contains("Card") || param.Key.Contains("Security")
                         ? "****"
                         : param.Value;
-                    _logger.LogDebug("{Key} = {Value}", param.Key, value);
+                    _logger.LogInformation("  {Key} = {Value}", param.Key, value);
                 }
 
                 // Generate secure hash (card details are excluded automatically by SecureHashGenerator)
                 var secureHash = _secureHashGenerator.Generate(parameters, _settings.AuthenticationToken);
 
                 // === DEBUG: Log generated hash ===
-                _logger.LogDebug("Generated Request SecureHash: {Hash}", secureHash);
+                _logger.LogInformation("Generated Request SecureHash: {Hash}", secureHash);
 
                 parameters.Add("SecureHash", secureHash);
 
                 // Convert to form data
                 var formContent = new FormUrlEncodedContent(parameters);
 
-                // === DEBUG: Log request ===
-                _logger.LogInformation("Sending request to SmartRoute: {Url}", _settings.ApiUrl);
+                // === CRITICAL: Log the actual encoded request body ===
+                var requestBody = await formContent.ReadAsStringAsync();
+                _logger.LogInformation("=== FULL ENCODED REQUEST BODY (for SmartRoute Support) ===");
+                _logger.LogInformation("URL: {Url}", _settings.ApiUrl);
+                _logger.LogInformation("Method: POST");
+                _logger.LogInformation("Content-Type: application/x-www-form-urlencoded");
+                _logger.LogInformation("Body Length: {Length} bytes", requestBody.Length);
+                _logger.LogInformation("Body: {Body}", requestBody);
+                _logger.LogInformation("========================================");
+
+                // IMPORTANT: After reading the content, we need to recreate it
+                // because the stream has been consumed
+                formContent = new FormUrlEncodedContent(parameters);
 
                 // Send request to SmartRoute API
+                _logger.LogInformation("Sending request to SmartRoute...");
                 var response = await _httpClient.PostAsync(
                     _settings.ApiUrl,
                     formContent,
@@ -84,15 +96,41 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 // Read response content
                 var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
-                // === DEBUG: Log raw response ===
-                _logger.LogDebug("=== RAW RESPONSE FROM SMARTROUTE ===");
-                _logger.LogDebug("Status Code: {StatusCode}", response.StatusCode);
-                _logger.LogDebug("{Response}", responseContent);
+                // === DEBUG: Log full response ===
+                _logger.LogInformation("=== RAW RESPONSE FROM SMARTROUTE ===");
+                _logger.LogInformation("HTTP Status: {StatusCode} ({StatusCodeInt})",
+                    response.StatusCode, (int)response.StatusCode);
+                _logger.LogInformation("Response Headers:");
+                foreach (var header in response.Headers)
+                {
+                    _logger.LogInformation("  {Key}: {Value}", header.Key, string.Join(", ", header.Value));
+                }
+                _logger.LogInformation("Content Headers:");
+                foreach (var header in response.Content.Headers)
+                {
+                    _logger.LogInformation("  {Key}: {Value}", header.Key, string.Join(", ", header.Value));
+                }
+                _logger.LogInformation("Response Body: {Response}", responseContent);
+                _logger.LogInformation("========================================");
 
-                // Check for HTTP errors
+                // Check HTTP status
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("SmartRoute returned HTTP {StatusCode}", response.StatusCode);
+                    _logger.LogError("SmartRoute returned HTTP error: {StatusCode}", response.StatusCode);
+
+                    // Special handling for 403 Forbidden
+                    if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        _logger.LogError("403 Forbidden - Possible causes:");
+                        _logger.LogError("1. Incorrect API URL (check _settings.ApiUrl)");
+                        _logger.LogError("2. IP address not whitelisted with SmartRoute");
+                        _logger.LogError("3. Incorrect MerchantID or Authentication Token");
+                        _logger.LogError("4. Merchant account not configured for Direct Post Payment");
+                        _logger.LogError("5. Request not coming from expected source");
+                        _logger.LogError("Current API URL: {Url}", _settings.ApiUrl);
+                        _logger.LogError("Current MerchantID: {MerchantId}", _settings.MerchantId);
+                    }
+
                     return CreateErrorResponse(
                         paymentRequest.TransactionId,
                         $"HTTP_{(int)response.StatusCode}",
@@ -166,29 +204,27 @@ namespace SmartRoutePayment.Infrastructure.Gateways
 
         private Dictionary<string, string> BuildRequestParameters(PaymentRequest request)
         {
-            // CRITICAL: Amount must be in smallest currency unit (fils/cents) without decimal point
-            // For SAR: 1.50 SAR = 150 halalas
-            // For USD: 1.50 USD = 150 cents
-            var amountInSmallestUnit = (request.Amount * 100).ToString("F0");
+            // Convert amount to smallest currency unit (fils/halalas for SAR)
+            var amountInSmallestUnit = ((int)(request.Amount * 100)).ToString();
 
             var parameters = new Dictionary<string, string>
             {
                 // Core Transaction Parameters
                 { "TransactionID", request.TransactionId },
                 { "MerchantID", _settings.MerchantId },
-                { "Amount", amountInSmallestUnit }, // Amount in fils/cents (smallest currency unit)
+                { "Amount", amountInSmallestUnit },
                 { "CurrencyISOCode", _settings.CurrencyIsoCode },
-                { "MessageID", request.MessageId.ToString() }, // 1=Payment, 2=PreAuth, 3=Verify
+                { "MessageID", request.MessageId.ToString() },
                 { "Quantity", request.Quantity > 0 ? request.Quantity.ToString() : _settings.Quantity.ToString() },
-                { "Channel", request.Channel >= 0 ? request.Channel.ToString() : _settings.Channel.ToString() }, // 0=Web, 1=Mobile, 2=CallCenter
-                { "PaymentMethod", request.PaymentMethod.ToString() }, // 1=Card, 2=Sadad, etc.
+                { "Channel", request.Channel >= 0 ? request.Channel.ToString() : _settings.Channel.ToString() },
+                { "PaymentMethod", request.PaymentMethod.ToString() },
                 
                 // UI Configuration
-                { "Language", _settings.Language }, // en or ar
+                { "Language", _settings.Language },
                 { "ThemeID", _settings.ThemeId },
                 { "Version", _settings.Version },
 
-                // Card Details (excluded from hash by SecureHashGenerator)
+                // Card Details (excluded from hash automatically)
                 { "CardNumber", request.CardNumber },
                 { "ExpiryDateYear", request.ExpiryDateYear },
                 { "ExpiryDateMonth", request.ExpiryDateMonth },
@@ -196,19 +232,17 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 { "CardHolderName", request.CardHolderName }
             };
 
-            // Add optional ResponseBackURL if provided
+            // Add optional parameters if provided
             if (!string.IsNullOrWhiteSpace(request.ResponseBackURL))
             {
                 parameters.Add("ResponseBackURL", request.ResponseBackURL);
             }
 
-            // Add optional PaymentDescription if provided (MUST be UTF-8 encoded)
             if (!string.IsNullOrWhiteSpace(request.PaymentDescription))
             {
                 parameters.Add("PaymentDescription", request.PaymentDescription);
             }
 
-            // Add optional ItemId if provided
             if (!string.IsNullOrWhiteSpace(request.ItemId))
             {
                 parameters.Add("ItemID", request.ItemId);
@@ -244,7 +278,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 CardExpiryDate = GetResponseValue(responsePairs, "Response.CardExpiryDate"),
                 CardHolderName = GetResponseValue(responsePairs, "Response.CardHolderName"),
                 CurrencyIsoCode = GetResponseValue(responsePairs, "Response.CurrencyISOCode"),
-                CardNumber = GetResponseValue(responsePairs, "Response.CardNumber"), // Masked by SmartRoute
+                CardNumber = GetResponseValue(responsePairs, "Response.CardNumber"),
                 MerchantId = GetResponseValue(responsePairs, "Response.MerchantID"),
                 Rrn = GetResponseValue(responsePairs, "Response.RRN"),
                 SecureHash = GetResponseValue(responsePairs, "Response.SecureHash"),
@@ -254,32 +288,26 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 ProcessedAt = DateTime.UtcNow
             };
 
-            // === DEBUG: Check if StatusCode is 00018 (hash mismatch from SmartRoute) ===
+            // Check if SmartRoute rejected our request hash (Error 00018)
             if (paymentResponse.StatusCode == "00018")
             {
-                _logger.LogError("SmartRoute returned 00018 - REQUEST hash was invalid!");
-                _logger.LogError("This means the hash WE SENT was wrong, not the response hash.");
+                _logger.LogError("SmartRoute returned 00018 - Our REQUEST hash was invalid!");
                 paymentResponse.IsSuccess = false;
                 paymentResponse.ErrorMessage = "Secure hash validation failed on SmartRoute side (Error 00018)";
                 return paymentResponse;
             }
 
-            // CRITICAL: Validate secure hash
-            // According to SmartRoute .NET sample code, StatusDescription and GatewayStatusDescription
-            // MUST be URL-encoded when building the hash validation string
+            // === URL-encode specific fields for response validation ===
             var receivedHash = paymentResponse.SecureHash;
-
-            // === DEBUG: Log received hash ===
             _logger.LogDebug("Received Response SecureHash: {Hash}", receivedHash);
 
-            // Build parameters for hash validation (exclude Response.SecureHash)
-            // CRITICAL: URL-encode StatusDescription and GatewayStatusDescription as per SmartRoute docs
+            // Build parameters for hash validation with URL encoding
             var parametersForValidation = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var pair in responsePairs.Where(p => p.Key.StartsWith("Response.", StringComparison.OrdinalIgnoreCase)
                                                        && !p.Key.Equals("Response.SecureHash", StringComparison.OrdinalIgnoreCase)))
             {
-                // CRITICAL: URL-encode these specific fields for hash validation
+                // URL-encode StatusDescription and GatewayStatusDescription
                 if (pair.Key.Equals("Response.StatusDescription", StringComparison.OrdinalIgnoreCase) ||
                     pair.Key.Equals("Response.GatewayStatusDescription", StringComparison.OrdinalIgnoreCase))
                 {
@@ -291,20 +319,10 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 }
             }
 
-            // === DEBUG: Log parameters used for validation ===
-            _logger.LogDebug("=== PARAMETERS FOR HASH VALIDATION (with URL encoding) ===");
-            foreach (var param in parametersForValidation.OrderBy(p => p.Key, StringComparer.Ordinal))
-            {
-                _logger.LogDebug("{Key} = {Value}", param.Key, param.Value);
-            }
-
             var computedHash = _secureHashGenerator.Generate(parametersForValidation, _settings.AuthenticationToken);
 
-            // === DEBUG: Compare hashes ===
-            _logger.LogDebug("Computed Hash from Response: {ComputedHash}", computedHash);
-            _logger.LogDebug("Received Hash from SmartRoute: {ReceivedHash}", receivedHash);
-            _logger.LogDebug("Hashes Match: {Match}",
-                string.Equals(computedHash, receivedHash, StringComparison.OrdinalIgnoreCase));
+            _logger.LogDebug("Computed Hash: {ComputedHash}", computedHash);
+            _logger.LogDebug("Received Hash: {ReceivedHash}", receivedHash);
 
             var isHashValid = _secureHashGenerator.Validate(
                 parametersForValidation,
@@ -323,7 +341,7 @@ namespace SmartRoutePayment.Infrastructure.Gateways
 
             _logger.LogInformation("Response hash validation PASSED!");
 
-            // Check if payment was successful (00000 = Success)
+            // Check payment success (00000 = Success)
             paymentResponse.IsSuccess = paymentResponse.StatusCode == "00000";
             paymentResponse.ErrorMessage = paymentResponse.IsSuccess
                 ? string.Empty
