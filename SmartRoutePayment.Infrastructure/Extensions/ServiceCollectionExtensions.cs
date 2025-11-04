@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Http; 
+using Microsoft.Extensions.Http;
 using SmartRoutePayment.Domain.Interfaces;
 using SmartRoutePayment.Infrastructure.Configuration;
 using SmartRoutePayment.Infrastructure.Gateways;
@@ -20,9 +20,16 @@ namespace SmartRoutePayment.Infrastructure.Extensions
             this IServiceCollection services,
             IConfiguration configuration)
         {
-            // Bind configuration
+            // ============================================
+            // Configuration
+            // ============================================
+
+            // Bind SmartRoute configuration settings
             services.Configure<SmartRouteSettings>(
                 configuration.GetSection(SmartRouteSettings.SectionName));
+
+            // Register configuration provider for application layer
+            services.AddSingleton<IPaymentConfigurationProvider, PaymentConfigurationProvider>();
 
             // ============================================
             // Secure Hash Generators
@@ -65,7 +72,6 @@ namespace SmartRoutePayment.Infrastructure.Extensions
 
                 client.Timeout = TimeSpan.FromSeconds(settings?.TimeoutSeconds ?? 30);
                 client.DefaultRequestHeaders.Add("Accept", "application/x-www-form-urlencoded");
-                //client.DefaultRequestHeaders.Add("Content-Type", "application/x-www-form-urlencoded");
             });
 
             // Register HTTP client for Refund Gateway (B2B API)
@@ -77,11 +83,9 @@ namespace SmartRoutePayment.Infrastructure.Extensions
 
                 client.Timeout = TimeSpan.FromSeconds(settings?.TimeoutSeconds ?? 30);
                 client.DefaultRequestHeaders.Add("Accept", "application/x-www-form-urlencoded");
-                //client.DefaultRequestHeaders.Add("Content-Type", "application/x-www-form-urlencoded");
             });
 
             return services;
         }
     }
-
 }

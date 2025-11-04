@@ -2,7 +2,7 @@ export const environment = {
   production: false,
   
   // Your Backend API (for hash generation & logging)
-  apiUrl: 'https://localhost:7001/api',
+  apiUrl: 'https://localhost:7001',
   
   // PayOne Configuration (from your appsettings.json)
   payone: {

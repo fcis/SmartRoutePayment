@@ -1,6 +1,4 @@
-﻿using FluentValidation;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using SmartRoutePayment.API.Models;
 using SmartRoutePayment.Application.DTOs.Requests;
 using SmartRoutePayment.Application.DTOs.Responses;
@@ -9,11 +7,10 @@ using SmartRoutePayment.Application.Interfaces;
 namespace SmartRoutePayment.API.Controllers
 {
     /// <summary>
-    /// Payment controller for processing Mada card payments through SmartRoute Direct Post Model
+    /// Payment Controller for Payone Direct Post Payment Integration
     /// </summary>
-    [Route("api/[controller]")]
     [ApiController]
-    [Produces("application/json")]
+    [Route("api/[controller]")]
     public class PaymentController : ControllerBase
     {
         private readonly IPaymentService _paymentService;
@@ -28,14 +25,57 @@ namespace SmartRoutePayment.API.Controllers
         }
 
         /// <summary>
-        /// Process a payment using Mada card via Direct Post Payment
+        /// Prepares payment parameters for Direct Post Payment
+        /// Frontend will collect card details and post directly to Payone
         /// </summary>
-        /// <param name="request">Payment request details including card information</param>
+        /// <param name="request">Payment preparation request (NO card data)</param>
         /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>Payment response with transaction status</returns>
-        /// <response code="200">Payment processed successfully</response>
-        /// <response code="400">Invalid request (validation failed)</response>
-        /// <response code="500">Internal server error</response>
+        /// <returns>All parameters needed for frontend to post to Payone</returns>
+        [HttpPost("prepare")]
+        [ProducesResponseType(typeof(ApiResponse<PreparePaymentResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> PreparePayment(
+            [FromBody] PreparePaymentRequestDto request,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("Preparing payment for amount: {Amount} SAR", request.Amount);
+
+                // Validate request
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+
+                    return BadRequest(ApiResponse<object>.ErrorResponse("Validation failed", errors));
+                }
+
+                // Prepare payment
+                var response = await _paymentService.PreparePaymentAsync(request, cancellationToken);
+
+                _logger.LogInformation("Payment prepared successfully. TransactionId: {TransactionId}", response.TransactionId);
+
+                return Ok(ApiResponse<PreparePaymentResponseDto>.SuccessResponse(response, "Payment prepared successfully"));
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid payment preparation request");
+                return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error preparing payment");
+                return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred while preparing payment"));
+            }
+        }
+
+        /// <summary>
+        /// Process payment (existing backend-to-backend flow)
+        /// </summary>
         [HttpPost("process")]
         [ProducesResponseType(typeof(ApiResponse<PaymentResponseDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
@@ -44,61 +84,34 @@ namespace SmartRoutePayment.API.Controllers
             [FromBody] PaymentRequestDto request,
             CancellationToken cancellationToken)
         {
-            _logger.LogInformation(
-                "Processing Direct Post Payment request for amount: {Amount} SAR",
-                request.Amount / 100); // Convert fils to SAR for logging
-
-            // No need for manual validation - FluentValidation handles this automatically
-            // via .() in Program.cs
-
-            // Process payment
-            var result = await _paymentService.ProcessPaymentAsync(request, cancellationToken);
-
-            if (result.IsSuccess)
+            try
             {
-                _logger.LogInformation(
-                    "Payment processed successfully. TransactionId: {TransactionId}, ApprovalCode: {ApprovalCode}, StatusCode: {StatusCode}",
-                    result.TransactionId,
-                    result.ApprovalCode,
-                    result.StatusCode);
+                _logger.LogInformation("Processing payment for amount: {Amount}", request.Amount);
 
-                return Ok(ApiResponse<PaymentResponseDto>.SuccessResponse(
-                    result,
-                    "Payment processed successfully"));
-            }
-
-            // Payment failed - return 400 Bad Request with error details
-            _logger.LogWarning(
-                "Payment processing failed. TransactionId: {TransactionId}, StatusCode: {StatusCode}, Error: {ErrorMessage}",
-                result.TransactionId,
-                result.StatusCode,
-                result.ErrorMessage);
-
-            return BadRequest(ApiResponse<PaymentResponseDto>.ErrorResponse(
-                "Payment processing failed",
-                new List<string> { result.ErrorMessage }));
-        }
-
-        /// <summary>
-        /// Health check endpoint to verify API availability
-        /// </summary>
-        /// <returns>API health status</returns>
-        /// <response code="200">API is healthy and running</response>
-        [HttpGet("health")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        public IActionResult HealthCheck()
-        {
-            _logger.LogDebug("Health check requested");
-
-            return Ok(ApiResponse<object>.SuccessResponse(
-                new
+                if (!ModelState.IsValid)
                 {
-                    status = "healthy",
-                    service = "SmartRoute Payment API",
-                    timestamp = DateTime.UtcNow,
-                    environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Unknown"
-                },
-                "API is running"));
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+
+                    return BadRequest(ApiResponse<object>.ErrorResponse("Validation failed", errors));
+                }
+
+                var response = await _paymentService.ProcessPaymentAsync(request, cancellationToken);
+
+                return Ok(ApiResponse<PaymentResponseDto>.SuccessResponse(response, "Payment processed"));
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid payment request");
+                return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing payment");
+                return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred while processing payment"));
+            }
         }
     }
 }
