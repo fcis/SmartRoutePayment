@@ -1,0 +1,96 @@
+<p>payment-result works!</p>
+<div class="result-container">
+  <!-- Loading State -->
+  <div *ngIf="isLoading" class="loading">
+    <div class="spinner"></div>
+    <p>Loading payment result...</p>
+  </div>
+
+  <!-- Success State -->
+  <div *ngIf="!isLoading && isSuccess" class="result-card success">
+    <div class="icon-container">
+      <svg class="success-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" stroke="#10b981" stroke-width="2"/>
+        <path d="M8 12l2.5 2.5L16 9" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <h1>Payment Successful!</h1>
+    <p class="subtitle">Your payment has been processed successfully.</p>
+
+    <div class="details-box">
+      <div class="detail-row">
+        <span class="label">Transaction ID:</span>
+        <span class="value">{{ transactionId }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="label">Status:</span>
+        <span class="value success-text">Completed</span>
+      </div>
+      <div class="detail-row">
+        <span class="label">Date:</span>
+        <span class="value">{{ currentDate | date: 'medium' }}</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" (click)="printReceipt()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" stroke="currentColor" stroke-width="2"/>
+          <path d="M6 14h12v8H6z" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        Print Receipt
+      </button>
+      <button class="btn btn-secondary" (click)="backToPayment()">
+        Back to Home
+      </button>
+    </div>
+  </div>
+
+  <!-- Failure State -->
+  <div *ngIf="!isLoading && !isSuccess" class="result-card failure">
+    <div class="icon-container">
+      <svg class="error-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="2"/>
+        <path d="M15 9l-6 6M9 9l6 6" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <h1>Payment Failed</h1>
+    <p class="subtitle">Unfortunately, your payment could not be processed.</p>
+
+    <div class="details-box error">
+      <div class="detail-row" *ngIf="transactionId">
+        <span class="label">Transaction ID:</span>
+        <span class="value">{{ transactionId }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="label">Error:</span>
+        <span class="value error-text">{{ errorMessage || 'Payment declined' }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="label">Date:</span>
+        <span class="value">{{ currentDate | date: 'medium' }}</span>
+      </div>
+    </div>
+
+    <div class="help-box">
+      <h3>What can you do?</h3>
+      <ul>
+        <li>Check your card details and try again</li>
+        <li>Ensure you have sufficient funds</li>
+        <li>Contact your bank if the problem persists</li>
+        <li>Try using a different payment method</li>
+      </ul>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" (click)="backToPayment()">
+        Try Again
+      </button>
+      <button class="btn btn-secondary" (click)="backToPayment()">
+        Back to Home
+      </button>
+    </div>
+  </div>
+</div>

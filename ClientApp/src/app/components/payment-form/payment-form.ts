@@ -134,7 +134,8 @@ export class PaymentFormComponent implements OnInit {
     this.addHiddenField(form, 'ThemeId', this.paymentParams.themeId);
     this.addHiddenField(form, 'Version', this.paymentParams.version);
     this.addHiddenField(form, 'SecureHash', this.paymentParams.secureHash);
-
+    const callbackUrl = window.location.origin + '/api/payment/callback';
+    this.addHiddenField(form, 'ResponseBackUrl', callbackUrl);
     // Add optional fields
     if (this.paymentParams.paymentDescription) {
       this.addHiddenField(form, 'PaymentDescription', this.paymentParams.paymentDescription);
