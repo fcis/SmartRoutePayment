@@ -73,45 +73,6 @@ namespace SmartRoutePayment.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Process payment (existing backend-to-backend flow)
-        /// </summary>
-        [HttpPost("process")]
-        [ProducesResponseType(typeof(ApiResponse<PaymentResponseDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> ProcessPayment(
-            [FromBody] PaymentRequestDto request,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                _logger.LogInformation("Processing payment for amount: {Amount}", request.Amount);
 
-                if (!ModelState.IsValid)
-                {
-                    var errors = ModelState.Values
-                        .SelectMany(v => v.Errors)
-                        .Select(e => e.ErrorMessage)
-                        .ToList();
-
-                    return BadRequest(ApiResponse<object>.ErrorResponse("Validation failed", errors));
-                }
-
-                var response = await _paymentService.ProcessPaymentAsync(request, cancellationToken);
-
-                return Ok(ApiResponse<PaymentResponseDto>.SuccessResponse(response, "Payment processed"));
-            }
-            catch (ArgumentException ex)
-            {
-                _logger.LogWarning(ex, "Invalid payment request");
-                return BadRequest(ApiResponse<object>.ErrorResponse(ex.Message));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing payment");
-                return StatusCode(500, ApiResponse<object>.ErrorResponse("An error occurred while processing payment"));
-            }
-        }
     }
 }

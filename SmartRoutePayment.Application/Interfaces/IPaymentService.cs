@@ -10,9 +10,7 @@ namespace SmartRoutePayment.Application.Interfaces
 {
     public interface IPaymentService
     {
-        Task<PaymentResponseDto> ProcessPaymentAsync(
-            PaymentRequestDto request,
-            CancellationToken cancellationToken = default);
+
 
         /// <summary>
         /// Prepares payment parameters and generates secure hash for frontend

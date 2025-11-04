@@ -87,5 +87,10 @@ namespace SmartRoutePayment.Application.DTOs.Responses
         /// PayOne Direct Post URL where Angular should post
         /// </summary>
         public string PayoneUrl { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Merchant's callback URL where PayOne will send payment response
+        /// </summary>
+        public string? ResponseBackUrl { get; set; }
     }
 }

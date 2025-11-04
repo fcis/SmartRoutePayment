@@ -30,5 +30,8 @@ namespace SmartRoutePayment.Infrastructure.Configuration
         public string Language => _settings.Language;
         public int Channel => _settings.Channel;
         public int Quantity => _settings.Quantity;
+
+        public string ResponseBackUrl => _settings.ResponseBackUrl;
+
     }
 }

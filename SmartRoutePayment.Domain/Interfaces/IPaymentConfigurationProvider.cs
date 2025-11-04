@@ -56,5 +56,10 @@ namespace SmartRoutePayment.Domain.Interfaces
         /// Quantity of items (default: 1)
         /// </summary>
         int Quantity { get; }
+
+        /// <summary>
+        /// Merchant's callback URL where PayOne sends payment response
+        /// </summary>
+        string ResponseBackUrl { get; }
     }
 }

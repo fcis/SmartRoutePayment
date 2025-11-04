@@ -146,7 +146,11 @@ namespace SmartRoutePayment.Application.Services
             {
                 parameters.Add("PaymentDescription", request.PaymentDescription);
             }
-
+            // Add ResponseBackUrl if configured
+            if (!string.IsNullOrWhiteSpace(_configurationProvider.ResponseBackUrl))
+            {
+                parameters.Add("ResponseBackURL", _configurationProvider.ResponseBackUrl);
+            }
             if (!string.IsNullOrWhiteSpace(request.ItemId))
             {
                 parameters.Add("ItemId", request.ItemId);
@@ -172,31 +176,12 @@ namespace SmartRoutePayment.Application.Services
                 SecureHash = secureHash,
                 PaymentDescription = request.PaymentDescription,
                 ItemId = request.ItemId,
-                PayoneUrl = _configurationProvider.ApiUrl // Payone Direct Post URL where Angular should POST
+                PayoneUrl = _configurationProvider.ApiUrl,
+                ResponseBackUrl = !string.IsNullOrWhiteSpace(_configurationProvider.ResponseBackUrl)
+                                       ? _configurationProvider.ResponseBackUrl : null
             });
         }
 
-        /// <summary>
-        /// Process payment request through SmartRoute Direct Post Payment
-        /// </summary>
-        public async Task<PaymentResponseDto> ProcessPaymentAsync(
-            PaymentRequestDto request,
-            CancellationToken cancellationToken = default)
-        {
-            // Generate unique transaction ID (timestamp-based)
-            var transactionId = GenerateTransactionId();
-
-            // Map DTO to Domain Entity
-            var paymentRequest = MapToPaymentRequest(request, transactionId);
-
-            // Process payment through gateway
-            var paymentResponse = await _smartRouteGateway.ProcessPaymentAsync(
-                paymentRequest,
-                cancellationToken);
-
-            // Map Domain Entity to DTO
-            return MapToPaymentResponseDto(paymentResponse);
-        }
 
         /// <summary>
         /// Converts amount from major currency unit (SAR) to fils (smallest unit)
@@ -221,54 +206,6 @@ namespace SmartRoutePayment.Application.Services
             return $"{timestamp}{random}";
         }
 
-        /// <summary>
-        /// Maps PaymentRequestDto to Domain PaymentRequest entity
-        /// </summary>
-        private static PaymentRequest MapToPaymentRequest(PaymentRequestDto dto, string transactionId)
-        {
-            return new PaymentRequest
-            {
-                TransactionId = transactionId,
-                Amount = dto.Amount,
-                MessageId = 1, // REQUIRED: 1=Payment, 2=PreAuth, 3=Verify
-                PaymentMethod = 1, // 1 = Card Payment (Mada is treated as card payment)
-                CardNumber = dto.CardNumber,
-                ExpiryDateMonth = dto.ExpiryDateMonth,
-                ExpiryDateYear = dto.ExpiryDateYear,
-                SecurityCode = dto.SecurityCode,
-                CardHolderName = dto.CardHolderName,
-                PaymentDescription = dto.PaymentDescription ?? string.Empty,
-                ItemId = dto.ItemId ?? string.Empty
-            };
-        }
 
-        /// <summary>
-        /// Maps Domain PaymentResponse entity to PaymentResponseDto
-        /// </summary>
-        private static PaymentResponseDto MapToPaymentResponseDto(PaymentResponse response)
-        {
-            return new PaymentResponseDto
-            {
-                IsSuccess = response.IsSuccess,
-                TransactionId = response.TransactionId,
-                MessageId = response.MessageId,
-                StatusCode = response.StatusCode,
-                StatusDescription = response.StatusDescription,
-                ApprovalCode = response.ApprovalCode,
-                GatewayName = response.GatewayName,
-                GatewayStatusCode = response.GatewayStatusCode,
-                GatewayStatusDescription = response.GatewayStatusDescription,
-                MaskedCardNumber = response.CardNumber, // Already masked by SmartRoute
-                CardExpiryDate = response.CardExpiryDate,
-                CardHolderName = response.CardHolderName,
-                Amount = response.Amount,
-                CurrencyIsoCode = response.CurrencyIsoCode,
-                Rrn = response.Rrn,
-                Token = response.Token,
-                IssuerName = response.IssuerName,
-                ErrorMessage = response.ErrorMessage,
-                ProcessedAt = response.ProcessedAt
-            };
-        }
     }
 }

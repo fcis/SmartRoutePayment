@@ -3,7 +3,6 @@ using FluentValidation.AspNetCore;
 using Microsoft.Extensions.DependencyInjection;
 using SmartRoutePayment.Application.Interfaces;
 using SmartRoutePayment.Application.Services;
-using SmartRoutePayment.Application.Validators;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,12 +15,7 @@ namespace SmartRoutePayment.Application.Extensions
     {
         public static IServiceCollection AddApplicationServices(this IServiceCollection services)
         {
-            // ============================================
-            // Validators
-            // ============================================
 
-            // Register validators from assembly
-            services.AddValidatorsFromAssemblyContaining<PaymentRequestValidator>();
 
             // ============================================
             // Direct Post Model Services (Existing)
