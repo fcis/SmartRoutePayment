@@ -26,6 +26,83 @@ namespace SmartRoutePayment.Application.Services
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
         }
 
+
+        /// <summary>
+        /// Handles payment callback from Payone
+        /// Validates SecureHash and processes payment result
+        /// </summary>
+        public async Task<PaymentCallbackDto> HandlePaymentCallbackAsync(
+            Dictionary<string, string> callbackData,
+            CancellationToken cancellationToken = default)
+        {
+            if (callbackData == null || callbackData.Count == 0)
+                throw new ArgumentException("Callback data cannot be null or empty", nameof(callbackData));
+
+            // Extract SecureHash from callback data
+            if (!callbackData.TryGetValue("SecureHash", out var receivedHash))
+                throw new ArgumentException("SecureHash not found in callback data");
+
+            // Validate SecureHash
+            var isValidHash = _secureHashGenerator.Validate(
+                callbackData,
+                receivedHash,
+                _configurationProvider.AuthenticationToken);
+
+            if (!isValidHash)
+            {
+                throw new InvalidOperationException("Invalid SecureHash - callback data may have been tampered with");
+            }
+
+            // Map callback data to DTO
+            var callback = new PaymentCallbackDto
+            {
+                TransactionId = GetValue(callbackData, "TransactionId"),
+                MerchantId = GetValue(callbackData, "MerchantId"),
+                MessageId = GetValue(callbackData, "MessageId"),
+                Amount = GetValue(callbackData, "Amount"),
+                CurrencyIsoCode = GetValue(callbackData, "CurrencyIsoCode"),
+                StatusCode = GetValue(callbackData, "StatusCode"),
+                StatusDescription = GetValue(callbackData, "StatusDescription"),
+                ApprovalCode = GetValueOrNull(callbackData, "ApprovalCode"),
+                GatewayName = GetValueOrNull(callbackData, "GatewayName"),
+                GatewayStatusCode = GetValueOrNull(callbackData, "GatewayStatusCode"),
+                GatewayStatusDescription = GetValueOrNull(callbackData, "GatewayStatusDescription"),
+                CardNumber = GetValueOrNull(callbackData, "CardNumber"),
+                CardExpiryDate = GetValueOrNull(callbackData, "CardExpiryDate"),
+                CardHolderName = GetValueOrNull(callbackData, "CardHolderName"),
+                Rrn = GetValueOrNull(callbackData, "Rrn"),
+                Token = GetValueOrNull(callbackData, "Token"),
+                IssuerName = GetValueOrNull(callbackData, "IssuerName"),
+                SecureHash = receivedHash,
+                PaymentDescription = GetValueOrNull(callbackData, "PaymentDescription"),
+                ItemId = GetValueOrNull(callbackData, "ItemId")
+            };
+
+            // TODO: Save payment result to database here
+            // Example:
+            // await _paymentRepository.SavePaymentResultAsync(callback, cancellationToken);
+
+            return await Task.FromResult(callback);
+        }
+
+        /// <summary>
+        /// Gets value from dictionary, throws if not found
+        /// </summary>
+        private static string GetValue(Dictionary<string, string> data, string key)
+        {
+            if (data.TryGetValue(key, out var value))
+                return value;
+
+            throw new KeyNotFoundException($"Required key '{key}' not found in callback data");
+        }
+
+        /// <summary>
+        /// Gets value from dictionary, returns null if not found
+        /// </summary>
+        private static string? GetValueOrNull(Dictionary<string, string> data, string key)
+        {
+            return data.TryGetValue(key, out var value) ? value : null;
+        }
         /// <summary>
         /// Prepares payment parameters and generates secure hash for Direct Post Payment
         /// Frontend will add card data and post directly to Payone

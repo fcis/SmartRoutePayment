@@ -4,7 +4,6 @@ using Microsoft.Extensions.Http;
 using SmartRoutePayment.Domain.Interfaces;
 using SmartRoutePayment.Infrastructure.Configuration;
 using SmartRoutePayment.Infrastructure.Gateways;
-using SmartRoutePayment.Infrastructure.Gateways.RedirectModel;
 using SmartRoutePayment.Infrastructure.Security;
 using System;
 using System.Collections.Generic;
@@ -38,8 +37,7 @@ namespace SmartRoutePayment.Infrastructure.Extensions
             // Register secure hash generator for Direct Post Model (existing)
             services.AddSingleton<ISecureHashGenerator, SecureHashGenerator>();
 
-            // Register secure hash generator for Redirectional Model (new)
-            services.AddSingleton<RedirectSecureHashGenerator>();
+
 
             // ============================================
             // Direct Post Model Gateway (Existing)
@@ -56,34 +54,7 @@ namespace SmartRoutePayment.Infrastructure.Extensions
                 client.DefaultRequestHeaders.Add("Accept", "application/x-www-form-urlencoded");
             });
 
-            // ============================================
-            // Redirectional Model Gateways (New)
-            // ============================================
 
-            // Register Redirect Payment Gateway (no HTTP client needed - client-side redirect)
-            services.AddScoped<IRedirectPaymentGateway, RedirectPaymentGateway>();
-
-            // Register HTTP client for Inquiry Gateway (B2B API)
-            services.AddHttpClient<IInquiryGateway, InquiryGateway>((serviceProvider, client) =>
-            {
-                var settings = configuration
-                    .GetSection(SmartRouteSettings.SectionName)
-                    .Get<SmartRouteSettings>();
-
-                client.Timeout = TimeSpan.FromSeconds(settings?.TimeoutSeconds ?? 30);
-                client.DefaultRequestHeaders.Add("Accept", "application/x-www-form-urlencoded");
-            });
-
-            // Register HTTP client for Refund Gateway (B2B API)
-            services.AddHttpClient<IRefundGateway, RefundGateway>((serviceProvider, client) =>
-            {
-                var settings = configuration
-                    .GetSection(SmartRouteSettings.SectionName)
-                    .Get<SmartRouteSettings>();
-
-                client.Timeout = TimeSpan.FromSeconds(settings?.TimeoutSeconds ?? 30);
-                client.DefaultRequestHeaders.Add("Accept", "application/x-www-form-urlencoded");
-            });
 
             return services;
         }

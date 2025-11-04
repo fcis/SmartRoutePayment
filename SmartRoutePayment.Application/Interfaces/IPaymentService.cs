@@ -21,5 +21,13 @@ namespace SmartRoutePayment.Application.Interfaces
         Task<PreparePaymentResponseDto> PreparePaymentAsync(
             PreparePaymentRequestDto request,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Handles payment callback from Payone
+        /// Validates SecureHash and processes payment result
+        /// </summary>
+        Task<PaymentCallbackDto> HandlePaymentCallbackAsync(
+            Dictionary<string, string> callbackData,
+            CancellationToken cancellationToken = default);
     }
 }

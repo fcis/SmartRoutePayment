@@ -3,7 +3,6 @@ using FluentValidation.AspNetCore;
 using Microsoft.Extensions.DependencyInjection;
 using SmartRoutePayment.Application.Interfaces;
 using SmartRoutePayment.Application.Services;
-using SmartRoutePayment.Application.Services.RedirectModel;
 using SmartRoutePayment.Application.Validators;
 using System;
 using System.Collections.Generic;
@@ -31,18 +30,10 @@ namespace SmartRoutePayment.Application.Extensions
             // Register Direct Post payment service
             services.AddScoped<IPaymentService, PaymentService>();
 
+  
             // ============================================
-            // Redirectional Model Services (New)
-            // ============================================
 
-            // Register Redirect Payment service
-            services.AddScoped<IRedirectPaymentService, RedirectPaymentService>();
 
-            // Register Inquiry service
-            services.AddScoped<IInquiryService, InquiryService>();
-
-            // Register Refund service
-            services.AddScoped<IRefundService, RefundService>();
 
             return services;
         }
