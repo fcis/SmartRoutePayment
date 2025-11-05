@@ -10,13 +10,14 @@ import { PreparePaymentResponse } from '../../models/payment-request.model';
   standalone: true,
   imports: [CommonModule, FormsModule, HttpClientModule],
   templateUrl: './payment-form.html',
-  styleUrls: ['./payment-form.css']
+  styleUrls: ['./payment-form.css'],
 })
 export class PaymentFormComponent implements OnInit {
-  @ViewChild('payoneForm', { static: false }) payoneForm!: ElementRef<HTMLFormElement>;
+  @ViewChild('payoneForm', { static: false })
+  payoneForm!: ElementRef<HTMLFormElement>;
 
   // Form data
-  amount: number = 50.00; // Amount in SAR
+  amount: number = 50.0; // Amount in SAR
   cardNumber: string = '';
   expiryMonth: string = '12';
   expiryYear: string = '25';
@@ -35,7 +36,20 @@ export class PaymentFormComponent implements OnInit {
   paymentParams: PreparePaymentResponse | null = null;
 
   // Dropdown options
-  months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+  months = [
+    '01',
+    '02',
+    '03',
+    '04',
+    '05',
+    '06',
+    '07',
+    '08',
+    '09',
+    '10',
+    '11',
+    '12',
+  ];
   years = ['24', '25', '26', '27', '28', '29', '30'];
 
   constructor(private paymentService: PaymentService) {}
@@ -74,7 +88,7 @@ export class PaymentFormComponent implements OnInit {
         paymentDescription: this.description || undefined,
         itemId: this.itemId || undefined,
         messageId: 1, // 1 = Payment
-        paymentMethod: 1 // 1 = Card
+        paymentMethod: 1, // 1 = Card
       };
 
       this.paymentService.preparePayment(prepareRequest).subscribe({
@@ -88,7 +102,9 @@ export class PaymentFormComponent implements OnInit {
               this.submitToPayone();
             }, 100);
           } else {
-            this.showErrorAlert(response.message || 'Failed to prepare payment');
+            this.showErrorAlert(
+              response.message || 'Failed to prepare payment'
+            );
             this.isLoading = false;
           }
         },
@@ -96,9 +112,8 @@ export class PaymentFormComponent implements OnInit {
           console.error('Payment preparation error:', error);
           this.showErrorAlert('Failed to connect to payment server');
           this.isLoading = false;
-        }
+        },
       });
-
     } catch (error) {
       console.error('Payment error:', error);
       this.showErrorAlert('An unexpected error occurred');
@@ -120,25 +135,41 @@ export class PaymentFormComponent implements OnInit {
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = this.paymentParams.payoneUrl;
-
     // Add all Payone parameters
     this.addHiddenField(form, 'MerchantId', this.paymentParams.merchantId);
-    this.addHiddenField(form, 'TransactionId', this.paymentParams.transactionId);
+    this.addHiddenField(
+      form,
+      'TransactionId',
+      this.paymentParams.transactionId
+    );
     this.addHiddenField(form, 'Amount', this.paymentParams.amount);
-    this.addHiddenField(form, 'CurrencyIsoCode', this.paymentParams.currencyIsoCode);
+    this.addHiddenField(
+      form,
+      'CurrencyIsoCode',
+      this.paymentParams.currencyIsoCode
+    );
     this.addHiddenField(form, 'MessageId', this.paymentParams.messageId);
     this.addHiddenField(form, 'Quantity', this.paymentParams.quantity);
     this.addHiddenField(form, 'Channel', this.paymentParams.channel);
-    this.addHiddenField(form, 'PaymentMethod', this.paymentParams.paymentMethod);
+    this.addHiddenField(
+      form,
+      'PaymentMethod',
+      this.paymentParams.paymentMethod
+    );
     this.addHiddenField(form, 'Language', this.paymentParams.language);
     this.addHiddenField(form, 'ThemeId', this.paymentParams.themeId);
     this.addHiddenField(form, 'Version', this.paymentParams.version);
     this.addHiddenField(form, 'SecureHash', this.paymentParams.secureHash);
-    const callbackUrl = window.location.origin + '/api/payment/callback';
-    this.addHiddenField(form, 'ResponseBackUrl', callbackUrl);
+    // Add callback URL (where Payone redirects after payment)
+    // const callbackUrl = window.location.origin + '/api/payment/callback';
+    // this.addHiddenField(form, 'ResponseBackUrl', callbackUrl);
     // Add optional fields
     if (this.paymentParams.paymentDescription) {
-      this.addHiddenField(form, 'PaymentDescription', this.paymentParams.paymentDescription);
+      this.addHiddenField(
+        form,
+        'PaymentDescription',
+        this.paymentParams.paymentDescription
+      );
     }
     if (this.paymentParams.itemId) {
       this.addHiddenField(form, 'ItemId', this.paymentParams.itemId);
@@ -154,6 +185,7 @@ export class PaymentFormComponent implements OnInit {
     // Append form to body and submit
     document.body.appendChild(form);
     form.submit();
+  
 
     // Note: User will be redirected to Payone payment page
     // Payment response will come back to your callback URL
@@ -162,7 +194,11 @@ export class PaymentFormComponent implements OnInit {
   /**
    * Add hidden input field to form
    */
-  private addHiddenField(form: HTMLFormElement, name: string, value: string): void {
+  private addHiddenField(
+    form: HTMLFormElement,
+    name: string,
+    value: string
+  ): void {
     const input = document.createElement('input');
     input.type = 'hidden';
     input.name = name;
@@ -180,7 +216,11 @@ export class PaymentFormComponent implements OnInit {
     }
 
     const cleanCardNumber = this.cardNumber.replace(/\s/g, '');
-    if (!cleanCardNumber || cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
+    if (
+      !cleanCardNumber ||
+      cleanCardNumber.length < 13 ||
+      cleanCardNumber.length > 19
+    ) {
       this.showErrorAlert('Please enter a valid card number');
       return false;
     }
