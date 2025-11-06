@@ -96,7 +96,6 @@ export class PaymentFormComponent implements OnInit {
           if (response.success && response.data) {
             // Step 2: Store payment parameters
             this.paymentParams = response.data;
-            console.log('Payment ResponseBackUrl:', this.paymentParams.ResponseBackUrl);
             // Step 3: Submit to Payone using hidden form
             setTimeout(() => {
               this.submitToPayone();
@@ -161,7 +160,7 @@ export class PaymentFormComponent implements OnInit {
     this.addHiddenField(form, 'Version', this.paymentParams.version);
     this.addHiddenField(form, 'SecureHash', this.paymentParams.secureHash);
 
-    this.addHiddenField(form, 'ResponseBackURL', this.paymentParams.ResponseBackUrl);
+    this.addHiddenField(form, 'ResponseBackURL', this.paymentParams.responseBackUrl);
     // Add optional fields
     // if (this.paymentParams.paymentDescription) {
     //   this.addHiddenField(

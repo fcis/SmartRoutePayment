@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Processing...</title>
+</head>
+<body>
+    <h2>Processing Payment...</h2>
+    <script>
+        // PayOne sends data as URL query parameters when redirecting
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        console.log('Received params:', Object.fromEntries(urlParams));
+        
+        if (urlParams.toString()) {
+            // Redirect to Angular with all parameters
+            window.location.href = '/payment/result?' + urlParams.toString();
+        } else {
+            // Check if data was sent via POST (form submission)
+            window.addEventListener('load', function() {
+                const formElements = document.querySelectorAll('input[type="hidden"]');
+                if (formElements.length > 0) {
+                    const params = new URLSearchParams();
+                    formElements.forEach(input => {
+                        params.append(input.name, input.value);
+                    });
+                    window.location.href = '/payment/result?' + params.toString();
+                } else {
+                    // No data received
+                    window.location.href = '/payment/result?error=No+payment+data+received';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

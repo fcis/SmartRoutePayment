@@ -22,7 +22,7 @@ export interface PreparePaymentResponse {
   paymentDescription?: string;
   itemId?: string;
   payoneUrl: string;
-  ResponseBackUrl: string;
+  responseBackUrl: string;
 }
 
 export interface ApiResponse<T> {
