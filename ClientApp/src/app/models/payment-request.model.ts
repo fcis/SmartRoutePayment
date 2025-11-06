@@ -22,6 +22,7 @@ export interface PreparePaymentResponse {
   paymentDescription?: string;
   itemId?: string;
   payoneUrl: string;
+  ResponseBackUrl: string;
 }
 
 export interface ApiResponse<T> {

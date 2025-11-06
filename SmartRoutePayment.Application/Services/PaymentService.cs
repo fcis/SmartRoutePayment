@@ -128,33 +128,33 @@ namespace SmartRoutePayment.Application.Services
             // Prepare all parameters for Payone Direct Post
             var parameters = new Dictionary<string, string>
             {
-                { "MerchantId", _configurationProvider.MerchantId },
-                { "TransactionId", transactionId },
+                { "MerchantID", _configurationProvider.MerchantId },
+                { "TransactionID", transactionId },
                 { "Amount", amountInFils },
-                { "CurrencyIsoCode", _configurationProvider.CurrencyIsoCode },
-                { "MessageId", request.MessageId.ToString() },
+                { "CurrencyISOCode", _configurationProvider.CurrencyIsoCode },
+                { "MessageID", request.MessageId.ToString() },
                 { "Quantity", _configurationProvider.Quantity.ToString() },
                 { "Channel", _configurationProvider.Channel.ToString() },
                 { "PaymentMethod", request.PaymentMethod.ToString() },
                 { "Language", _configurationProvider.Language },
-                { "ThemeId", _configurationProvider.ThemeId },
+                //{ "ThemeId", _configurationProvider.ThemeId },
                 { "Version", _configurationProvider.Version }
             };
 
-            // Add optional parameters if provided
-            if (!string.IsNullOrWhiteSpace(request.PaymentDescription))
-            {
-                parameters.Add("PaymentDescription", request.PaymentDescription);
-            }
-            // Add ResponseBackUrl if configured
+            //// Add optional parameters if provided
+            //if (!string.IsNullOrWhiteSpace(request.PaymentDescription))
+            //{
+            //    parameters.Add("PaymentDescription", request.PaymentDescription);
+            //}
+            //// Add ResponseBackUrl if configured
             if (!string.IsNullOrWhiteSpace(_configurationProvider.ResponseBackUrl))
             {
                 parameters.Add("ResponseBackURL", _configurationProvider.ResponseBackUrl);
             }
-            if (!string.IsNullOrWhiteSpace(request.ItemId))
-            {
-                parameters.Add("ItemId", request.ItemId);
-            }
+            //if (!string.IsNullOrWhiteSpace(request.ItemId))
+            //{
+            //    parameters.Add("ItemID", request.ItemId);
+            //}
 
             // Generate SecureHash (card fields will be excluded automatically by SecureHashGenerator)
             var secureHash = _secureHashGenerator.Generate(parameters, _configurationProvider.AuthenticationToken);
@@ -175,7 +175,7 @@ namespace SmartRoutePayment.Application.Services
                 Version = _configurationProvider.Version,
                 SecureHash = secureHash,
                 PaymentDescription = request.PaymentDescription,
-                ItemId = request.ItemId,
+                //ItemId = request.ItemId,
                 PayoneUrl = _configurationProvider.ApiUrl,
                 ResponseBackUrl = !string.IsNullOrWhiteSpace(_configurationProvider.ResponseBackUrl)
                                        ? _configurationProvider.ResponseBackUrl : null

@@ -7,5 +7,6 @@ export const routes: Routes = [
   { path: 'payment', component: PaymentFormComponent },
   { path: 'payment/success', component: PaymentResultComponent },
   { path: 'payment/failure', component: PaymentResultComponent },
+  { path: 'payment/result', component: PaymentResultComponent },
   { path: '**', redirectTo: '' }
 ];

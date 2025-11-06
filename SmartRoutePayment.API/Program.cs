@@ -21,7 +21,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngular", policy =>
     {
-        policy.WithOrigins("http://localhost:4200") // Angular default port
+        policy.WithOrigins("http://localhost:4200", "https://1eeaa5e62622.ngrok-free.app") // Angular default port
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();

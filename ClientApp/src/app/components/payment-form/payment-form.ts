@@ -96,7 +96,7 @@ export class PaymentFormComponent implements OnInit {
           if (response.success && response.data) {
             // Step 2: Store payment parameters
             this.paymentParams = response.data;
-
+            console.log('Payment prepared:', this.paymentParams.transactionId);
             // Step 3: Submit to Payone using hidden form
             setTimeout(() => {
               this.submitToPayone();
@@ -136,19 +136,19 @@ export class PaymentFormComponent implements OnInit {
     form.method = 'POST';
     form.action = this.paymentParams.payoneUrl;
     // Add all Payone parameters
-    this.addHiddenField(form, 'MerchantId', this.paymentParams.merchantId);
+    this.addHiddenField(form, 'MerchantID', this.paymentParams.merchantId);
     this.addHiddenField(
       form,
-      'TransactionId',
+      'TransactionID',
       this.paymentParams.transactionId
     );
     this.addHiddenField(form, 'Amount', this.paymentParams.amount);
     this.addHiddenField(
       form,
-      'CurrencyIsoCode',
+      'CurrencyISOCode',
       this.paymentParams.currencyIsoCode
     );
-    this.addHiddenField(form, 'MessageId', this.paymentParams.messageId);
+    this.addHiddenField(form, 'MessageID', this.paymentParams.messageId);
     this.addHiddenField(form, 'Quantity', this.paymentParams.quantity);
     this.addHiddenField(form, 'Channel', this.paymentParams.channel);
     this.addHiddenField(
@@ -157,23 +157,22 @@ export class PaymentFormComponent implements OnInit {
       this.paymentParams.paymentMethod
     );
     this.addHiddenField(form, 'Language', this.paymentParams.language);
-    this.addHiddenField(form, 'ThemeId', this.paymentParams.themeId);
+    // this.addHiddenField(form, 'ThemeID', this.paymentParams.themeId);
     this.addHiddenField(form, 'Version', this.paymentParams.version);
     this.addHiddenField(form, 'SecureHash', this.paymentParams.secureHash);
-    // Add callback URL (where Payone redirects after payment)
-    // const callbackUrl = window.location.origin + '/api/payment/callback';
-    // this.addHiddenField(form, 'ResponseBackUrl', callbackUrl);
+
+    this.addHiddenField(form, 'ResponseBackURL', this.paymentParams.ResponseBackUrl);
     // Add optional fields
-    if (this.paymentParams.paymentDescription) {
-      this.addHiddenField(
-        form,
-        'PaymentDescription',
-        this.paymentParams.paymentDescription
-      );
-    }
-    if (this.paymentParams.itemId) {
-      this.addHiddenField(form, 'ItemId', this.paymentParams.itemId);
-    }
+    // if (this.paymentParams.paymentDescription) {
+    //   this.addHiddenField(
+    //     form,
+    //     'PaymentDescription',
+    //     this.paymentParams.paymentDescription
+    //   );
+    // }
+    // if (this.paymentParams.itemId) {
+    //   this.addHiddenField(form, 'ItemID', this.paymentParams.itemId);
+    // }
 
     // Add card details (sensitive data - NOT included in SecureHash)
     this.addHiddenField(form, 'CardNumber', this.cardNumber.replace(/\s/g, ''));
