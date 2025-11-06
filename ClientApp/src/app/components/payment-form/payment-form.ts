@@ -96,7 +96,7 @@ export class PaymentFormComponent implements OnInit {
           if (response.success && response.data) {
             // Step 2: Store payment parameters
             this.paymentParams = response.data;
-            console.log('Payment prepared:', this.paymentParams.transactionId);
+            console.log('Payment ResponseBackUrl:', this.paymentParams.ResponseBackUrl);
             // Step 3: Submit to Payone using hidden form
             setTimeout(() => {
               this.submitToPayone();
