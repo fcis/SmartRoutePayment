@@ -3,34 +3,31 @@
 <head>
     <meta charset="utf-8">
     <title>Processing...</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    </style>
 </head>
 <body>
-    <h2>Processing Payment...</h2>
+    <h2>Payment Response Data (Testing)</h2>
+    <h3>URL Parameters:</h3>
+    <pre id="urlParams"></pre>
+    <h3>All Parameters as Object:</h3>
+    <pre id="paramsObject"></pre>
+    
     <script>
-        // PayOne sends data as URL query parameters when redirecting
         const urlParams = new URLSearchParams(window.location.search);
         
-        console.log('Received params:', Object.fromEntries(urlParams));
+        // Display raw query string
+        document.getElementById('urlParams').textContent = urlParams.toString() || 'No parameters received';
         
-        if (urlParams.toString()) {
-            // Redirect to Angular with all parameters
-            window.location.href = '/payment/result?' + urlParams.toString();
-        } else {
-            // Check if data was sent via POST (form submission)
-            window.addEventListener('load', function() {
-                const formElements = document.querySelectorAll('input[type="hidden"]');
-                if (formElements.length > 0) {
-                    const params = new URLSearchParams();
-                    formElements.forEach(input => {
-                        params.append(input.name, input.value);
-                    });
-                    window.location.href = '/payment/result?' + params.toString();
-                } else {
-                    // No data received
-                    window.location.href = '/payment/result?error=No+payment+data+received';
-                }
-            });
-        }
+        // Display as formatted object
+        const paramsObj = Object.fromEntries(urlParams);
+        document.getElementById('paramsObject').textContent = JSON.stringify(paramsObj, null, 2) || 'No parameters';
+        
+        // Also log to console
+        console.log('URL Params String:', urlParams.toString());
+        console.log('Params Object:', paramsObj);
     </script>
 </body>
 </html>

@@ -9,6 +9,19 @@ namespace SmartRoutePayment.Domain.Interfaces
 {
     public interface ISmartRouteGateway
     {
-        Task<PaymentResponse> ProcessPaymentAsync(PaymentRequest paymentRequest, CancellationToken cancellationToken = default);
+        /// <summary>
+        /// Process Direct Post Payment through SmartRoute Gateway
+        /// </summary>
+        Task<PaymentResponse> ProcessPaymentAsync(
+            PaymentRequest paymentRequest,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Inquire about a transaction status through SmartRoute Gateway (B2B)
+        /// Server-to-server communication only
+        /// </summary>
+        Task<InquiryResponse> InquireTransactionAsync(
+            InquiryRequest inquiryRequest,
+            CancellationToken cancellationToken = default);
     }
 }

@@ -24,8 +24,9 @@ namespace SmartRoutePayment.Application.Extensions
             // Register Direct Post payment service
             services.AddScoped<IPaymentService, PaymentService>();
 
-  
+
             // ============================================
+            services.AddScoped<IInquiryService, InquiryService>(); // NEW
 
 
 

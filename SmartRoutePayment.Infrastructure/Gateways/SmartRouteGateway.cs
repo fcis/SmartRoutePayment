@@ -388,5 +388,273 @@ namespace SmartRoutePayment.Infrastructure.Gateways
                 ProcessedAt = DateTime.UtcNow
             };
         }
+        /// <summary>
+        /// Inquire about a transaction status through SmartRoute Gateway (B2B)
+        /// Server-to-server communication using GET request with query parameters
+        /// </summary>
+        public async Task<InquiryResponse> InquireTransactionAsync(
+            InquiryRequest inquiryRequest,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                // Validate request
+                ValidateInquiryRequest(inquiryRequest);
+
+                // Build request parameters
+                var parameters = BuildInquiryRequestParameters(inquiryRequest);
+
+                // === DEBUG: Log parameters BEFORE hash generation ===
+                _logger.LogInformation("=== INQUIRY REQUEST PARAMETERS (Before Hash) ===");
+                foreach (var param in parameters.OrderBy(p => p.Key, StringComparer.Ordinal))
+                {
+                    _logger.LogInformation("  {Key} = {Value}", param.Key, param.Value);
+                }
+
+                // Generate secure hash
+                var secureHash = _secureHashGenerator.Generate(parameters, _settings.AuthenticationToken);
+
+                // === DEBUG: Log generated hash ===
+                _logger.LogInformation("Generated Inquiry Request SecureHash: {Hash}", secureHash);
+
+                parameters.Add("SecureHash", secureHash);
+
+                // Build query string
+                var queryString = BuildQueryString(parameters);
+                var requestUrl = $"{_settings.InquiryUrl}?{queryString}";
+
+                // === CRITICAL: Log the full request URL ===
+                _logger.LogInformation("=== FULL INQUIRY REQUEST URL ===");
+                _logger.LogInformation("URL: {Url}", requestUrl);
+                _logger.LogInformation("Method: POST");
+                _logger.LogInformation("========================================");
+
+                // Send POST request with query parameters
+                _logger.LogInformation("Sending inquiry request to SmartRoute...");
+                var response = await _httpClient.PostAsync(
+                    requestUrl,
+                    null, // No body content, all params in query string
+                    cancellationToken);
+
+                // Read response content
+                var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                // === DEBUG: Log full response ===
+                _logger.LogInformation("=== RAW INQUIRY RESPONSE FROM SMARTROUTE ===");
+                _logger.LogInformation("HTTP Status: {StatusCode} ({StatusCodeInt})",
+                    response.StatusCode, (int)response.StatusCode);
+                _logger.LogInformation("Response Headers:");
+                foreach (var header in response.Headers)
+                {
+                    _logger.LogInformation("  {Key}: {Value}", header.Key, string.Join(", ", header.Value));
+                }
+                _logger.LogInformation("Content Headers:");
+                foreach (var header in response.Content.Headers)
+                {
+                    _logger.LogInformation("  {Key}: {Value}", header.Key, string.Join(", ", header.Value));
+                }
+                _logger.LogInformation("Response Body: {Response}", responseContent);
+                _logger.LogInformation("========================================");
+
+                // Check HTTP status
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("SmartRoute returned HTTP error: {StatusCode}", response.StatusCode);
+
+                    // Special handling for 403 Forbidden
+                    if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        _logger.LogError("403 Forbidden - Possible causes:");
+                        _logger.LogError("1. Incorrect Inquiry URL (check _settings.InquiryUrl)");
+                        _logger.LogError("2. IP address not whitelisted with SmartRoute");
+                        _logger.LogError("3. Incorrect MerchantID or Authentication Token");
+                        _logger.LogError("4. Invalid SecureHash");
+                        _logger.LogError("Current Inquiry URL: {Url}", _settings.InquiryUrl);
+                        _logger.LogError("Current MerchantID: {MerchantId}", _settings.MerchantId);
+                    }
+
+                    return CreateInquiryErrorResponse(
+                        inquiryRequest.OriginalTransactionID,
+                        $"HTTP_{(int)response.StatusCode}",
+                        $"SmartRoute returned HTTP {response.StatusCode}: {responseContent}");
+                }
+
+                // Parse and validate response
+                return ParseAndValidateInquiryResponse(responseContent, inquiryRequest.OriginalTransactionID);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "HTTP connection error during inquiry");
+                return CreateInquiryErrorResponse(
+                    inquiryRequest.OriginalTransactionID,
+                    "HTTP_ERROR",
+                    $"Connection error: {ex.Message}");
+            }
+            catch (TaskCanceledException ex)
+            {
+                _logger.LogError(ex, "Inquiry request timeout");
+                return CreateInquiryErrorResponse(
+                    inquiryRequest.OriginalTransactionID,
+                    "TIMEOUT",
+                    "Request timeout");
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogError(ex, "Inquiry validation error");
+                return CreateInquiryErrorResponse(
+                    inquiryRequest.OriginalTransactionID,
+                    "VALIDATION_ERROR",
+                    ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during inquiry");
+                return CreateInquiryErrorResponse(
+                    inquiryRequest.OriginalTransactionID,
+                    "SYSTEM_ERROR",
+                    $"Unexpected error: {ex.Message}");
+            }
+        }
+
+        private void ValidateInquiryRequest(InquiryRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.OriginalTransactionID))
+                throw new ArgumentException("OriginalTransactionID is required");
+        }
+
+        private Dictionary<string, string> BuildInquiryRequestParameters(InquiryRequest request)
+        {
+            var parameters = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        { "MerchantID", _settings.MerchantId },
+        { "MessageID", request.MessageID?.ToString() ?? "2" },
+        { "OriginalTransactionID", request.OriginalTransactionID },
+        { "Version", request.Version ?? _settings.Version }
+    };
+
+            return parameters;
+        }
+
+        private string BuildQueryString(Dictionary<string, string> parameters)
+        {
+            return string.Join("&", parameters
+                .OrderBy(p => p.Key, StringComparer.Ordinal)
+                .Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
+        }
+
+        private InquiryResponse ParseAndValidateInquiryResponse(string responseContent, string originalTransactionId)
+        {
+            // Parse form-encoded response
+            var responsePairs = ParseFormEncodedResponse(responseContent);
+
+            // === DEBUG: Log parsed response ===
+            _logger.LogDebug("=== PARSED INQUIRY RESPONSE PARAMETERS ===");
+            foreach (var param in responsePairs.OrderBy(p => p.Key, StringComparer.Ordinal))
+            {
+                _logger.LogDebug("{Key} = {Value}", param.Key, param.Value);
+            }
+
+            // Extract response parameters
+            var inquiryResponse = new InquiryResponse
+            {
+                MessageStatus = GetResponseValue(responsePairs, "Response.MessageStatus", "ERROR"),
+                ReversalStatus = GetResponseValue(responsePairs, "Response.ReversalStatus"),
+                GatewayStatusCode = GetResponseValue(responsePairs, "Response.GatewayStatusCode"),
+                GatewayStatusDescription = GetResponseValue(responsePairs, "Response.GatewayStatusDescription"),
+                GatewayName = GetResponseValue(responsePairs, "Response.GatewayName"),
+                TransactionID = GetResponseValue(responsePairs, "Response.TransactionID", originalTransactionId),
+                Amount = GetResponseValue(responsePairs, "Response.Amount"),
+                CurrencyISOCode = GetResponseValue(responsePairs, "Response.CurrencyISOCode"),
+                MessageID = GetResponseValue(responsePairs, "Response.MessageID"),
+                MerchantID = GetResponseValue(responsePairs, "Response.MerchantID"),
+                StatusCode = GetResponseValue(responsePairs, "Response.StatusCode", "ERROR"),
+                StatusDescription = GetResponseValue(responsePairs, "Response.StatusDescription", "Unknown error"),
+                RRN = GetResponseValue(responsePairs, "Response.RRN"),
+                ApprovalCode = GetResponseValue(responsePairs, "Response.ApprovalCode"),
+                PaymentMethod = GetResponseValue(responsePairs, "Response.PaymentMethod"),
+                SecureHash = GetResponseValue(responsePairs, "Response.SecureHash"),
+                CardNumber = GetResponseValue(responsePairs, "Response.CardNumber"),
+                CardExpiryDate = GetResponseValue(responsePairs, "Response.CardExpiryDate"),
+                CardHolderName = GetResponseValue(responsePairs, "Response.CardHolderName"),
+                ProcessedAt = DateTime.UtcNow
+            };
+
+            // Check if SmartRoute rejected our request hash (Error 00018)
+            if (inquiryResponse.StatusCode == "00018")
+            {
+                _logger.LogError("SmartRoute returned 00018 - Our INQUIRY REQUEST hash was invalid!");
+                inquiryResponse.IsSuccess = false;
+                inquiryResponse.ErrorMessage = "Secure hash validation failed on SmartRoute side (Error 00018)";
+                return inquiryResponse;
+            }
+
+            // === Validate Response SecureHash ===
+            var receivedHash = inquiryResponse.SecureHash;
+            _logger.LogDebug("Received Inquiry Response SecureHash: {Hash}", receivedHash);
+
+            // Build parameters for hash validation with URL encoding
+            var parametersForValidation = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var pair in responsePairs.Where(p => p.Key.StartsWith("Response.", StringComparison.OrdinalIgnoreCase)
+                                                           && !p.Key.Equals("Response.SecureHash", StringComparison.OrdinalIgnoreCase)))
+            {
+                // URL-encode StatusDescription and GatewayStatusDescription
+                if (pair.Key.Equals("Response.StatusDescription", StringComparison.OrdinalIgnoreCase) ||
+                    pair.Key.Equals("Response.GatewayStatusDescription", StringComparison.OrdinalIgnoreCase))
+                {
+                    parametersForValidation[pair.Key] = System.Web.HttpUtility.UrlEncode(pair.Value, System.Text.Encoding.UTF8);
+                }
+                else
+                {
+                    parametersForValidation[pair.Key] = pair.Value;
+                }
+            }
+
+            var computedHash = _secureHashGenerator.Generate(parametersForValidation, _settings.AuthenticationToken);
+
+            _logger.LogDebug("Computed Inquiry Hash: {ComputedHash}", computedHash);
+            _logger.LogDebug("Received Inquiry Hash: {ReceivedHash}", receivedHash);
+
+            var isHashValid = _secureHashGenerator.Validate(
+                parametersForValidation,
+                receivedHash,
+                _settings.AuthenticationToken);
+
+            if (!isHashValid)
+            {
+                _logger.LogError("Inquiry response hash validation FAILED!");
+                _logger.LogError("Expected: {Expected}, Received: {Received}", computedHash, receivedHash);
+
+                inquiryResponse.IsSuccess = false;
+                inquiryResponse.ErrorMessage = "Invalid secure hash - response may be tampered";
+                return inquiryResponse;
+            }
+
+            _logger.LogInformation("Inquiry response hash validation PASSED!");
+
+            // Check inquiry success (00000 = Success)
+            inquiryResponse.IsSuccess = inquiryResponse.StatusCode == "00000";
+            inquiryResponse.ErrorMessage = inquiryResponse.IsSuccess
+                ? string.Empty
+                : inquiryResponse.StatusDescription;
+
+            return inquiryResponse;
+        }
+
+        private static InquiryResponse CreateInquiryErrorResponse(
+            string originalTransactionId,
+            string statusCode,
+            string errorMessage)
+        {
+            return new InquiryResponse
+            {
+                TransactionID = originalTransactionId,
+                StatusCode = statusCode,
+                StatusDescription = errorMessage,
+                IsSuccess = false,
+                ErrorMessage = errorMessage,
+                ProcessedAt = DateTime.UtcNow
+            };
+        }
     }
 }
